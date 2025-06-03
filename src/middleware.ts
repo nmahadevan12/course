@@ -2,6 +2,8 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { forbidden, notFound } from 'next/navigation';
 import arcjet, { detectBot, shield, slidingWindow } from '@arcjet/next';
 import { env } from './data/env/server';
+import { set } from 'zod';
+import { setUserCountryHeader } from './lib/userCountryHeader';
 
 const isPublicRoute = createRouteMatcher([
     "/",
@@ -33,7 +35,7 @@ const aj = arcjet({
 })
 
 export default clerkMiddleware(async (auth, req) => {
-    const decision = await aj.protect(req)
+    const decision = await aj.protect(env.TEST_IP_ADDRESS ? {...req, ip: env.TEST_IP_ADDRESS, headers: req.headers}: req)
 
     if (decision.isDenied()) return forbidden()
 
@@ -48,6 +50,8 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (!decision.ip.isVpn() && !decision.ip.isProxy()) {
         const headers = new Headers(req.headers)
+        setUserCountryHeader(headers, decision.ip.country)
+        console.log(decision.ip.country)
     }
 })
 
