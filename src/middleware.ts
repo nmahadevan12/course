@@ -1,5 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { notFound } from 'next/navigation';
+import { forbidden, notFound } from 'next/navigation';
+import arcjet, { detectBot, shield, slidingWindow } from '@arcjet/next';
+import { env } from './data/env/server';
 
 const isPublicRoute = createRouteMatcher([
     "/",
@@ -14,7 +16,27 @@ const isAdminRoute = createRouteMatcher([
     "/admin(.*)"
 ])
 
+const aj = arcjet({
+    key: env.ARCJET_KEY,
+    rules: [
+        shield({ mode: "LIVE"}), 
+        detectBot({
+            mode: "LIVE",
+            allow: ["CATEGORY:SEARCH_ENGINE", "CATEGORY:MONITOR", "CATEGORY:PREVIEW"]
+        }),
+        slidingWindow({
+            mode: "LIVE",
+            interval: "1m",
+            max: 100
+        })
+    ]
+})
+
 export default clerkMiddleware(async (auth, req) => {
+    const decision = await aj.protect(req)
+
+    if (decision.isDenied()) return forbidden()
+
     if (isAdminRoute(req)) {
         const user = await auth.protect()
         if (user.sessionClaims.role !== "admin") return notFound()
@@ -22,6 +44,10 @@ export default clerkMiddleware(async (auth, req) => {
 
     if (!isPublicRoute(req)) {
         await auth.protect()
+    }
+
+    if (!decision.ip.isVpn() && !decision.ip.isProxy()) {
+        const headers = new Headers(req.headers)
     }
 })
 
